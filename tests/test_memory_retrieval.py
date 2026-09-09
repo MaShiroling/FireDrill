@@ -231,6 +231,25 @@ def test_vector_failure_falls_back_to_approved_lexical_search(tmp_path) -> None:
     assert result.hits[0].source is MemorySearchSource.LEXICAL
 
 
+def test_explicit_lexical_search_uses_only_approved_sqlite_records(tmp_path) -> None:
+    repository, index, service = _service(tmp_path)
+    approved = repository.upsert(_record("Commit 提交超时", "应先核对运行状态"))
+    repository.set_status(approved.memory_id, MemoryStatus.APPROVED)
+    repository.upsert(_record("Commit 提交超时", "未经审核的候选经验"))
+    index.fail_search = True
+
+    result = service.search_lexical(
+        "提交超时",
+        tenant_id="tenant-a",
+        device_type="firewall",
+        degraded_reason="semantic timeout",
+    )
+
+    assert result.mode == MemorySearchSource.LEXICAL.value
+    assert result.degraded_reason == "semantic timeout"
+    assert [hit.record.memory_id for hit in result.hits] == [approved.memory_id]
+
+
 def test_sync_failure_is_reported_without_changing_sqlite(tmp_path) -> None:
     repository, index, _service_instance = _service(tmp_path)
     approved = repository.upsert(_record("提交超时", "提交后验证"))

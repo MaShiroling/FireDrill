@@ -3,6 +3,7 @@
 import pytest
 
 from app.memory import (
+    MemoryIndexSyncResult,
     MemoryNamespace,
     MemoryRecord,
     MemoryReviewService,
@@ -10,6 +11,18 @@ from app.memory import (
     MemoryType,
     SQLiteMemoryRepository,
 )
+
+
+class RecordingSynchronizer:
+    def __init__(self, *, error: Exception | None = None) -> None:
+        self.namespaces: list[MemoryNamespace] = []
+        self.error = error
+
+    def sync_namespace(self, namespace: MemoryNamespace) -> MemoryIndexSyncResult:
+        self.namespaces.append(namespace)
+        if self.error is not None:
+            raise self.error
+        return MemoryIndexSyncResult(namespace=namespace, indexed=1, removed=0)
 
 
 def _record(
@@ -147,3 +160,46 @@ def test_retired_memory_cannot_be_approved_again(tmp_path) -> None:
             reviewer="alice",
             reason="尝试恢复",
         )
+
+
+def test_review_transitions_automatically_refresh_the_memory_namespace(tmp_path) -> None:
+    repository = SQLiteMemoryRepository(tmp_path / "agent_memory.db")
+    synchronizer = RecordingSynchronizer()
+    service = MemoryReviewService(repository, index_synchronizer=synchronizer)
+    stored = repository.upsert(_record(MemoryType.FAILURE_LESSON))
+
+    service.approve(
+        stored.memory_id,
+        tenant_id="tenant-a",
+        device_type="firewall",
+        reviewer="alice",
+        reason="证据充分",
+    )
+    service.retire(
+        stored.memory_id,
+        tenant_id="tenant-a",
+        device_type="firewall",
+        reviewer="alice",
+        reason="经验已失效",
+    )
+
+    assert synchronizer.namespaces == [stored.namespace, stored.namespace]
+
+
+def test_index_sync_failure_does_not_roll_back_review_status(tmp_path) -> None:
+    repository = SQLiteMemoryRepository(tmp_path / "agent_memory.db")
+    synchronizer = RecordingSynchronizer(error=RuntimeError("milvus unavailable"))
+    service = MemoryReviewService(repository, index_synchronizer=synchronizer)
+    stored = repository.upsert(_record(MemoryType.FAILURE_LESSON))
+
+    approved = service.approve(
+        stored.memory_id,
+        tenant_id="tenant-a",
+        device_type="firewall",
+        reviewer="alice",
+        reason="证据充分",
+    )
+
+    assert approved.status is MemoryStatus.APPROVED
+    assert repository.get(stored.memory_id).status is MemoryStatus.APPROVED
+    assert synchronizer.namespaces == [stored.namespace]

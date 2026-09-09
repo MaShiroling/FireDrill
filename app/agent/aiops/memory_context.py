@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import lru_cache
 
 from loguru import logger
@@ -26,6 +26,7 @@ class PlannerMemoryContext:
     injected_ids: tuple[str, ...] = ()
     mode: str = "disabled"
     truncated: bool = False
+    timed_out: bool = False
     degraded_reason: str | None = None
 
 
@@ -107,21 +108,59 @@ async def load_planner_memory_context(
     device_type: str,
     top_k: int,
     max_chars: int,
+    timeout_s: float = 2.0,
     service_factory: Callable[[], MemoryRetrievalService] = get_memory_retrieval_service,
 ) -> PlannerMemoryContext:
     """Retrieve memory off the event loop and degrade to an empty context on failure."""
     if not enabled:
         return PlannerMemoryContext()
+    if timeout_s <= 0:
+        return PlannerMemoryContext(
+            mode="unavailable",
+            degraded_reason="memory retrieval timeout must be positive",
+        )
     try:
         service = service_factory()
-        result = await asyncio.to_thread(
-            service.search,
-            query,
-            tenant_id=tenant_id,
-            device_type=device_type,
-            top_k=top_k,
+    except Exception as exc:  # noqa: BLE001 - memory must never block the Agent
+        logger.warning("Planner 长期记忆加载失败，本次按无记忆模式继续: {}", exc)
+        return PlannerMemoryContext(mode="unavailable", degraded_reason=str(exc))
+
+    try:
+        result = await asyncio.wait_for(
+            asyncio.to_thread(
+                service.search,
+                query,
+                tenant_id=tenant_id,
+                device_type=device_type,
+                top_k=top_k,
+            ),
+            timeout=timeout_s,
         )
         return format_planner_memory_context(result, max_chars=max_chars)
+    except TimeoutError:
+        reason = f"semantic memory retrieval timed out after {timeout_s:g}s"
+        logger.warning("{}，降级为 SQLite 词法检索", reason)
+        try:
+            fallback_result = await asyncio.wait_for(
+                asyncio.to_thread(
+                    service.search_lexical,
+                    query,
+                    tenant_id=tenant_id,
+                    device_type=device_type,
+                    top_k=top_k,
+                    degraded_reason=reason,
+                ),
+                timeout=timeout_s,
+            )
+            context = format_planner_memory_context(fallback_result, max_chars=max_chars)
+            return replace(context, timed_out=True)
+        except Exception as fallback_exc:  # noqa: BLE001 - fallback must not block planning
+            logger.warning("长期记忆词法降级失败，本次按无记忆模式继续: {}", fallback_exc)
+            return PlannerMemoryContext(
+                mode="unavailable",
+                timed_out=True,
+                degraded_reason=f"{reason}; lexical fallback failed: {fallback_exc}",
+            )
     except Exception as exc:  # noqa: BLE001 - memory must never block the Agent
         logger.warning("Planner 长期记忆加载失败，本次按无记忆模式继续: {}", exc)
         return PlannerMemoryContext(mode="unavailable", degraded_reason=str(exc))

@@ -12,10 +12,9 @@ sys.path.insert(0, str(ROOT))
 
 from app.config import config  # noqa: E402
 from app.memory import (  # noqa: E402
-    MemoryReviewService,
     MemoryStatus,
     MemoryType,
-    SQLiteMemoryRepository,
+    build_default_memory_review_service,
 )
 
 
@@ -68,7 +67,7 @@ def _summary(record) -> dict[str, object]:
 
 def main() -> None:
     args = _parse_args()
-    service = MemoryReviewService(SQLiteMemoryRepository(args.db_path))
+    service = build_default_memory_review_service(db_path=args.db_path)
     try:
         if args.command == "list":
             records = service.list_for_review(

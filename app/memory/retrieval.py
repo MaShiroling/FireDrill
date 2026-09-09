@@ -248,6 +248,52 @@ class MemoryRetrievalService:
         ranked.sort(key=lambda hit: (-hit.score, -hit.record.confidence, hit.record.memory_id))
         return ranked[:limit]
 
+    def search_lexical(
+        self,
+        query: str,
+        *,
+        tenant_id: str,
+        device_type: str,
+        memory_types: Sequence[MemoryType] = tuple(MemoryType),
+        top_k: int | None = None,
+        now: datetime | None = None,
+        degraded_reason: str | None = None,
+    ) -> MemorySearchResult:
+        """Search approved SQLite memories without embeddings or Milvus.
+
+        This path is intentionally provider-free so the Planner can still receive
+        a small, reviewed context when semantic retrieval exceeds its latency
+        budget or an external dependency is unavailable.
+        """
+        clean_query = query.strip()
+        if not clean_query:
+            raise ValueError("query must not be empty")
+        limit = self.default_top_k if top_k is None else top_k
+        if limit <= 0:
+            raise ValueError("top_k must be positive")
+        namespaces = tuple(
+            MemoryNamespace(
+                tenant_id=tenant_id,
+                device_type=device_type,
+                memory_type=memory_type,
+            )
+            for memory_type in memory_types
+        )
+        hits = tuple(
+            self._lexical_hits(
+                clean_query,
+                namespaces,
+                limit=limit,
+                excluded_ids=set(),
+                now=now,
+            )
+        )
+        return MemorySearchResult(
+            hits=hits,
+            mode=MemorySearchSource.LEXICAL.value,
+            degraded_reason=degraded_reason,
+        )
+
     def search(
         self,
         query: str,

@@ -125,12 +125,26 @@ async def planner(state: PlanExecuteState) -> dict[str, Any]:
             device_type=state.get("memory_device_type", config.agent_memory_device_type),
             top_k=config.agent_memory_top_k,
             max_chars=config.agent_memory_context_max_chars,
+            timeout_s=config.agent_memory_retrieval_timeout_s,
         )
         if not config.agent_memory_enabled:
             trace_event(
                 "memory_retrieval_skipped",
                 node="planner",
                 data={"reason": "disabled"},
+            )
+        elif memory_context.timed_out:
+            trace_event(
+                "memory_retrieval_timed_out",
+                node="planner",
+                data={
+                    "mode": memory_context.mode,
+                    "recalled_ids": list(memory_context.recalled_ids),
+                    "injected_ids": list(memory_context.injected_ids),
+                    "injected_count": len(memory_context.injected_ids),
+                    "fallback_succeeded": memory_context.mode != "unavailable",
+                    "error": memory_context.degraded_reason,
+                },
             )
         elif memory_context.degraded_reason and not memory_context.recalled_ids:
             trace_event(

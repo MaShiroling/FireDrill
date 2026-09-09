@@ -23,7 +23,11 @@ from app.memory.retrieval import (
     build_default_memory_retrieval_service,
     render_memory_text,
 )
-from app.memory.review import MemoryReviewService
+from app.memory.review import (
+    MemoryIndexSynchronizer,
+    MemoryReviewService,
+    build_default_memory_review_service,
+)
 from app.memory.schemas import MemoryNamespace, MemoryRecord, MemoryStatus, MemoryType
 from app.memory.vector_index import (
     MemoryVectorEntry,
@@ -37,6 +41,7 @@ __all__ = [
     "MEMORY_DB_SCHEMA_VERSION",
     "MemoryConflictError",
     "MemoryIndexSyncResult",
+    "MemoryIndexSynchronizer",
     "MemoryNamespace",
     "MemoryRecord",
     "MemoryRepository",
@@ -55,6 +60,7 @@ __all__ = [
     "MilvusMemoryVectorIndex",
     "SQLiteMemoryRepository",
     "build_default_memory_retrieval_service",
+    "build_default_memory_review_service",
     "build_memory_fingerprint",
     "extract_failure_memories",
     "extract_failure_memory",

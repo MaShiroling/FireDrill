@@ -5,6 +5,7 @@
 
 from typing import Any
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -65,6 +66,7 @@ class Settings(BaseSettings):
     agent_memory_tenant_id: str = "local"
     agent_memory_device_type: str = "firewall"
     agent_memory_context_max_chars: int = 2400
+    agent_memory_retrieval_timeout_s: float = Field(default=2.0, gt=0)
 
     # 文档分块配置
     chunk_max_size: int = 800

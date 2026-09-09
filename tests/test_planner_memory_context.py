@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import time
 from dataclasses import replace
 
 from app.agent.aiops.memory_context import (
@@ -116,6 +117,43 @@ async def test_loader_passes_scope_and_limits_to_retrieval() -> None:
         "top_k": 2,
     }
     assert context.injected_ids == ("mem-approved",)
+
+
+async def test_retrieval_timeout_falls_back_to_sqlite_lexical_search() -> None:
+    captured: dict[str, object] = {}
+    hit = _hit("mem-fallback", "超时后先检查真实状态")
+
+    class SlowService:
+        def search(self, _query: str, **_kwargs) -> MemorySearchResult:
+            time.sleep(0.05)
+            return MemorySearchResult(hits=(), mode="vector")
+
+        def search_lexical(self, query: str, **kwargs) -> MemorySearchResult:
+            captured.update({"query": query, **kwargs})
+            return MemorySearchResult(
+                hits=(replace(hit, source=MemorySearchSource.LEXICAL),),
+                mode="lexical",
+                degraded_reason=kwargs.get("degraded_reason"),
+            )
+
+    context = await load_planner_memory_context(
+        "提交超时",
+        enabled=True,
+        tenant_id="tenant-a",
+        device_type="firewall",
+        top_k=2,
+        max_chars=1000,
+        timeout_s=0.01,
+        service_factory=SlowService,
+    )
+
+    assert context.timed_out
+    assert context.mode == "lexical"
+    assert context.injected_ids == ("mem-fallback",)
+    assert context.degraded_reason == "semantic memory retrieval timed out after 0.01s"
+    assert captured["tenant_id"] == "tenant-a"
+    assert captured["device_type"] == "firewall"
+    assert captured["top_k"] == 2
 
 
 async def test_planner_injects_memory_context_and_records_ids(monkeypatch) -> None:

@@ -118,6 +118,7 @@ class AIOpsService:
                 "agent_memory_enabled": config.agent_memory_enabled,
                 "agent_memory_top_k": config.agent_memory_top_k,
                 "agent_memory_context_max_chars": config.agent_memory_context_max_chars,
+                "agent_memory_retrieval_timeout_s": config.agent_memory_retrieval_timeout_s,
                 "mcp_servers": config.mcp_servers,
             },
             metadata=trace_metadata,
@@ -234,7 +235,7 @@ class AIOpsService:
             yield {
                 "type": "error",
                 "stage": "error",
-                "message": f"任务执行出错: {str(e)}",
+                "message": f"任务执行出错: {e!s}",
                 "trace_id": recorder.run_id if recorder else None,
                 "trace_path": recorder.relative_path() if recorder else None,
             }
