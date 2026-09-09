@@ -16,6 +16,7 @@ from app.config import config
 from app.observability import trace_event
 from app.tools import DEFAULT_LOCAL_AGENT_TOOLS, retrieve_knowledge
 
+from .memory_context import load_planner_memory_context
 from .state import PlanExecuteState
 from .utils import format_tools_description
 
@@ -25,6 +26,10 @@ class Plan(BaseModel):
 
     steps: list[str] = Field(
         description="完成任务所需的不同步骤。这些步骤应该按顺序执行，每一步都建立在前一步的基础上。"
+    )
+    memory_ids_used: list[str] = Field(
+        default_factory=list,
+        description="本计划实际参考的长期记忆 memory_id；未使用长期记忆时返回空列表。",
     )
 
 
@@ -44,6 +49,8 @@ planner_prompt = ChatPromptTemplate.from_messages(
 
                 {experience_context}
 
+                {memory_context}
+
                 对于给定的任务，请创建一个简单的、逐步的计划来完成它。计划应该：
                 - 将任务分解为逻辑上独立的步骤
                 - 每个步骤应该明确使用哪些工具(如果需要工具的话)来获取信息, 最好能同时提供工具执行所需要的参数
@@ -54,6 +61,7 @@ planner_prompt = ChatPromptTemplate.from_messages(
                 - 只有规则名称但没有规则 ID 时，先用 list_firewall_rules 查询真实 ID；不得把名称当作 rule_id
                 - 新增规则的 ID 由 add_firewall_rule 返回，后续步骤必须复用实际返回值，禁止预先猜测 ID
                 - **如果有相关经验文档，请参考其中的方法和步骤制定计划**
+                - 如果实际参考了长期记忆，只能在 memory_ids_used 中填写上下文提供的 memory_id；未参考则返回空列表
 
                 示例输入："分析当前系统的性能问题"
                 示例输出（假设有对应工具）：
@@ -109,7 +117,46 @@ async def planner(state: PlanExecuteState) -> dict[str, Any]:
             logger.warning(f"查询内部文档失败: {e}")
             trace_event("knowledge_retrieval_failed", node="planner", data={"error": str(e)})
 
-        # 步骤2: 获取可用工具列表
+        # 步骤2: 按开关检索经过审核的长期记忆。记忆不可作为当前状态证据。
+        memory_context = await load_planner_memory_context(
+            input_text,
+            enabled=config.agent_memory_enabled,
+            tenant_id=state.get("memory_tenant_id", config.agent_memory_tenant_id),
+            device_type=state.get("memory_device_type", config.agent_memory_device_type),
+            top_k=config.agent_memory_top_k,
+            max_chars=config.agent_memory_context_max_chars,
+        )
+        if not config.agent_memory_enabled:
+            trace_event(
+                "memory_retrieval_skipped",
+                node="planner",
+                data={"reason": "disabled"},
+            )
+        elif memory_context.degraded_reason and not memory_context.recalled_ids:
+            trace_event(
+                "memory_retrieval_failed",
+                node="planner",
+                data={
+                    "mode": memory_context.mode,
+                    "error": memory_context.degraded_reason,
+                },
+            )
+        else:
+            trace_event(
+                "memory_retrieval_completed",
+                node="planner",
+                data={
+                    "mode": memory_context.mode,
+                    "recalled_ids": list(memory_context.recalled_ids),
+                    "injected_ids": list(memory_context.injected_ids),
+                    "injected_count": len(memory_context.injected_ids),
+                    "content_length": len(memory_context.text),
+                    "truncated": memory_context.truncated,
+                    "degraded": bool(memory_context.degraded_reason),
+                },
+            )
+
+        # 步骤3: 获取可用工具列表
         # 获取本地工具
         local_tools = list(DEFAULT_LOCAL_AGENT_TOOLS)
 
@@ -132,7 +179,7 @@ async def planner(state: PlanExecuteState) -> dict[str, Any]:
         # 格式化工具描述
         tools_description = format_tools_description(all_tools)
 
-        # 步骤3: 格式化经验文档上下文
+        # 步骤4: 格式化经验文档上下文
         if experience_docs:
             experience_context = dedent(f"""
                 ## 相关经验文档
@@ -146,7 +193,7 @@ async def planner(state: PlanExecuteState) -> dict[str, Any]:
         else:
             experience_context = ""
 
-        # 步骤4: 创建 LLM 并生成计划
+        # 步骤5: 创建 LLM 并生成计划
         llm = ChatQwen(model=config.rag_model, api_key=config.dashscope_api_key, temperature=0)
 
         planner_chain = planner_prompt | llm.with_structured_output(Plan)
@@ -154,6 +201,7 @@ async def planner(state: PlanExecuteState) -> dict[str, Any]:
         # 调用 LLM 生成计划
         # structured output 偶发返回 None（LLM 抖动），最多重试一次
         plan_steps: list[str] = []
+        reported_memory_ids: list[str] = []
         for attempt in range(2):
             trace_event(
                 "model_call_started",
@@ -165,6 +213,7 @@ async def planner(state: PlanExecuteState) -> dict[str, Any]:
                     "messages": [("user", input_text)],
                     "tools_description": tools_description,
                     "experience_context": experience_context,
+                    "memory_context": memory_context.text,
                 }
             )
             trace_event(
@@ -176,9 +225,16 @@ async def planner(state: PlanExecuteState) -> dict[str, Any]:
             # 提取步骤列表
             if isinstance(plan_result, Plan):
                 plan_steps = plan_result.steps
+                reported_memory_ids = plan_result.memory_ids_used
             elif isinstance(plan_result, dict):
                 # 如果返回的是字典，提取 steps 字段
                 plan_steps = plan_result.get("steps", [])  # type: ignore
+                raw_memory_ids = plan_result.get("memory_ids_used", [])
+                reported_memory_ids = (
+                    [memory_id for memory_id in raw_memory_ids if isinstance(memory_id, str)]
+                    if isinstance(raw_memory_ids, list)
+                    else []
+                )
 
             if plan_steps:
                 break
@@ -190,6 +246,30 @@ async def planner(state: PlanExecuteState) -> dict[str, Any]:
         logger.info(f"计划已生成，共 {len(plan_steps)} 个步骤")
         for i, step in enumerate(plan_steps, 1):
             logger.info(f"  步骤{i}: {step}")
+
+        allowed_memory_ids = set(memory_context.injected_ids)
+        used_memory_ids = list(
+            dict.fromkeys(
+                memory_id for memory_id in reported_memory_ids if memory_id in allowed_memory_ids
+            )
+        )
+        invalid_memory_ids = list(
+            dict.fromkeys(
+                memory_id
+                for memory_id in reported_memory_ids
+                if memory_id not in allowed_memory_ids
+            )
+        )
+        trace_event(
+            "memory_usage_reported",
+            node="planner",
+            data={
+                "source": "model_self_report",
+                "used_ids": used_memory_ids,
+                "invalid_ids": invalid_memory_ids,
+                "injected_ids": list(memory_context.injected_ids),
+            },
+        )
 
         trace_event("node_completed", node="planner", data={"plan": plan_steps, "fallback": False})
 

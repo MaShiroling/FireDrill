@@ -14,24 +14,52 @@ from app.memory.repository import (
     MemoryReviewEvent,
     SQLiteMemoryRepository,
 )
+from app.memory.retrieval import (
+    MemoryIndexSyncResult,
+    MemoryRetrievalService,
+    MemorySearchHit,
+    MemorySearchResult,
+    MemorySearchSource,
+    build_default_memory_retrieval_service,
+    render_memory_text,
+)
 from app.memory.review import MemoryReviewService
 from app.memory.schemas import MemoryNamespace, MemoryRecord, MemoryStatus, MemoryType
+from app.memory.vector_index import (
+    MemoryVectorEntry,
+    MemoryVectorIndex,
+    MemoryVectorMatch,
+    MemoryVectorSyncStats,
+    MilvusMemoryVectorIndex,
+)
 
 __all__ = [
     "MEMORY_DB_SCHEMA_VERSION",
     "MemoryConflictError",
+    "MemoryIndexSyncResult",
     "MemoryNamespace",
     "MemoryRecord",
     "MemoryRepository",
+    "MemoryRetrievalService",
     "MemoryReviewEvent",
     "MemoryReviewService",
+    "MemorySearchHit",
+    "MemorySearchResult",
+    "MemorySearchSource",
     "MemoryStatus",
     "MemoryType",
+    "MemoryVectorEntry",
+    "MemoryVectorIndex",
+    "MemoryVectorMatch",
+    "MemoryVectorSyncStats",
+    "MilvusMemoryVectorIndex",
     "SQLiteMemoryRepository",
+    "build_default_memory_retrieval_service",
     "build_memory_fingerprint",
     "extract_failure_memories",
     "extract_failure_memory",
     "extract_recovered_memories",
     "normalize_memory_text",
     "persist_memory_candidates",
+    "render_memory_text",
 ]

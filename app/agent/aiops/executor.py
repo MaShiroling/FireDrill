@@ -5,7 +5,7 @@ Executor 节点：执行单个步骤
 
 from typing import Any
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_qwq import ChatQwen
 from langgraph.prebuilt import ToolNode
 from loguru import logger
@@ -18,6 +18,52 @@ from app.tools import DEFAULT_LOCAL_AGENT_TOOLS
 from .model_retry import invoke_model_with_retry
 from .state import PlanExecuteState
 from .utils import format_execution_context
+
+# 这些工具会修改 Candidate/Running 状态。只要同一批 tool_calls 中出现任意
+# 写操作，整批调用就必须按模型给出的顺序串行执行，避免 commit 与后续核实
+# 同时发出，产生“核实读到提交前状态”的竞态。
+STATEFUL_TOOL_NAMES = frozenset(
+    {
+        "add_firewall_rule",
+        "update_firewall_rule",
+        "delete_firewall_rule",
+        "move_firewall_rule",
+        "commit_config",
+        "discard_candidate",
+    }
+)
+
+
+def requires_sequential_tool_execution(tool_calls: list[dict[str, Any]]) -> bool:
+    """Return whether a model-selected tool batch has state-order dependencies."""
+    return len(tool_calls) > 1 and any(
+        str(tool_call.get("name", "")) in STATEFUL_TOOL_NAMES for tool_call in tool_calls
+    )
+
+
+async def execute_selected_tools(
+    tool_node: ToolNode,
+    messages: list[Any],
+    llm_response: Any,
+) -> tuple[list[Any], str]:
+    """Execute tool calls in parallel or sequentially according to state dependencies.
+
+    ``ToolNode`` executes multiple calls from one ``AIMessage`` concurrently. For a
+    stateful batch, create one AIMessage per call so every ToolMessage is completed
+    before the next call starts. The caller still appends the original AIMessage and
+    all returned ToolMessages to the model conversation, preserving tool-call IDs.
+    """
+    tool_calls = list(llm_response.tool_calls)
+    if not requires_sequential_tool_execution(tool_calls):
+        result = await tool_node.ainvoke({"messages": [*messages, llm_response]})
+        return list(result["messages"]), "parallel"
+
+    tool_messages: list[Any] = []
+    for tool_call in tool_calls:
+        single_call_response = AIMessage(content="", tool_calls=[tool_call])
+        result = await tool_node.ainvoke({"messages": [*messages, single_call_response]})
+        tool_messages.extend(result["messages"])
+    return tool_messages, "sequential"
 
 
 async def executor(state: PlanExecuteState) -> dict[str, Any]:
@@ -91,6 +137,7 @@ async def executor(state: PlanExecuteState) -> dict[str, Any]:
 - 不要编造数据，只返回实际获取的信息
 - 执行结果要清晰、准确
 - 专注于当前步骤，不要擅自执行后续步骤
+- 如果当前步骤确实需要多个有先后依赖的工具，必须按业务顺序生成 tool_calls；配置写操作、提交和提交后验证不得颠倒
 - 严格遵守工具参数 Schema，不得把规则名称填写到 rule_id 参数
 - rule_id 必须使用用户明确给出的值或此前工具真实返回的值（格式如 rule-003），禁止猜测或生成 new-rule-001 等虚假 ID
 - 只有规则名称而没有 rule_id 时，应先调用 list_firewall_rules 查出真实 ID，再在后续步骤使用
@@ -124,10 +171,27 @@ async def executor(state: PlanExecuteState) -> dict[str, Any]:
                     },
                 )
 
-            # 使用 ToolNode 自动执行工具
-            messages.append(llm_response)
-            tool_messages = await tool_node.ainvoke({"messages": messages})
-            for tool_message in tool_messages["messages"]:
+            # ToolNode 默认并发执行同一 AIMessage 中的多个调用。配置写操作参与时，
+            # 改为逐个调用，保证 commit 完成后才开始状态核实和流量验证。
+            tool_messages, execution_mode = await execute_selected_tools(
+                tool_node,
+                messages,
+                llm_response,
+            )
+            trace_event(
+                "tool_execution_mode_selected",
+                node="executor",
+                data={
+                    "mode": execution_mode,
+                    "tool_names": [call.get("name") for call in llm_response.tool_calls],
+                    "reason": (
+                        "stateful_tool_dependency"
+                        if execution_mode == "sequential"
+                        else "read_only_or_single_call"
+                    ),
+                },
+            )
+            for tool_message in tool_messages:
                 trace_event(
                     "tool_call_completed",
                     node="executor",
@@ -140,7 +204,8 @@ async def executor(state: PlanExecuteState) -> dict[str, Any]:
                 )
 
             # 第三步：将工具结果返回给 LLM 生成最终答案
-            messages.extend(tool_messages["messages"])
+            messages.append(llm_response)
+            messages.extend(tool_messages)
             final_response = await invoke_model_with_retry(
                 lambda: llm_with_tools.ainvoke(messages),
                 node="executor",

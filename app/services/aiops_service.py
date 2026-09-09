@@ -82,6 +82,8 @@ class AIOpsService:
         user_input: str,
         session_id: str = "default",
         trace_metadata: dict[str, Any] | None = None,
+        memory_tenant_id: str | None = None,
+        memory_device_type: str | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
         """
         执行 Plan-Execute-Replan 流程
@@ -113,6 +115,9 @@ class AIOpsService:
                 "max_agent_steps": 8,
                 "model_max_attempts": config.agent_model_max_attempts,
                 "model_retry_delay_s": config.agent_model_retry_delay_s,
+                "agent_memory_enabled": config.agent_memory_enabled,
+                "agent_memory_top_k": config.agent_memory_top_k,
+                "agent_memory_context_max_chars": config.agent_memory_context_max_chars,
                 "mcp_servers": config.mcp_servers,
             },
             metadata=trace_metadata,
@@ -144,6 +149,8 @@ class AIOpsService:
                 "plan": [],
                 "past_steps": [],
                 "response": "",
+                "memory_tenant_id": memory_tenant_id or config.agent_memory_tenant_id,
+                "memory_device_type": memory_device_type or config.agent_memory_device_type,
             }
 
             # 流式执行工作流

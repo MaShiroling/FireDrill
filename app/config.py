@@ -54,8 +54,17 @@ class Settings(BaseSettings):
     agent_model_max_attempts: int = 2
     agent_model_retry_delay_s: float = 0.5
 
-    # Agent 长期记忆事实源；向量索引后续单独接入，可由这里的数据重建
+    # Agent 长期记忆事实源；向量索引与 RAG 集合隔离，可由 SQLite 重建
     agent_memory_db_path: str = "volumes/agent_memory.db"
+    agent_memory_collection_name: str = "agent_memory_v1"
+    agent_memory_vector_dim: int = 1024
+    agent_memory_top_k: int = 3
+    agent_memory_min_score: float = 0.35
+    # 默认关闭，便于用同一套回放数据做 memory on/off A/B。
+    agent_memory_enabled: bool = False
+    agent_memory_tenant_id: str = "local"
+    agent_memory_device_type: str = "firewall"
+    agent_memory_context_max_chars: int = 2400
 
     # 文档分块配置
     chunk_max_size: int = 800
