@@ -1,0 +1,87 @@
+{
+  "schema_version": "1.0",
+  "baseline_id": "firewall-flywheel-retry-v1",
+  "captured_at": "2026-09-06T20:05:53+08:00",
+  "source": {
+    "commit": "8a708657ad011054a22b9d6e5fda3dfa7f893520",
+    "short_commit": "8a70865",
+    "subject": "feat: 新增评测体系——30 条防火墙用例 + A/B 对照 + RAG 对照实验",
+    "worktree_dirty": true
+  },
+  "configuration": {
+    "provenance": "从当前源码默认值补录；历史 JSONL 未逐次记录运行时配置，后续轨迹版本将改为每次运行直接采集",
+    "primary_tag": "flywheel-retry-v1",
+    "comparison_tag": "no-comparison",
+    "expected_runs_per_case": 3,
+    "selected_case_ids": [
+      "REPLAY-FW-F05-5ceef15c",
+      "REPLAY-FW-F01-feba241e",
+      "REPLAY-FW-F01-7b511cad",
+      "REPLAY-FW-F02-16460419",
+      "REPLAY-FW-F05-7b1b2cba"
+    ],
+    "model": "qwen-max",
+    "planner_temperature": 0,
+    "executor_temperature": 0,
+    "replanner_temperature": 0,
+    "max_agent_steps": 8
+  },
+  "metric_definitions": {
+    "task_success_rate": "passed=true 的运行数 / 运行总数；passed 要求所有终态断言通过且 runner 无错误",
+    "fake_completion_rate": "fake_complete=true 的运行数 / 运行总数；表示报告声称成功但终态断言未通过",
+    "run_error_rate": "runner 或 Agent 产生非空 error 的运行数 / 运行总数",
+    "assertion_pass_rate": "通过的确定性终态断言数 / 全部终态断言数",
+    "average_steps": "每次运行产生的 step_complete 事件数的算术平均值",
+    "average_duration_s": "每次运行墙钟耗时（秒）的算术平均值"
+  },
+  "dataset": {
+    "path": "evals/artifacts/flywheel/replay_cases.json",
+    "sha256": "df5f4837961ad7e1fafc9ae6ddbd1c4c40843807a99f82b0cccc9aec2085255e",
+    "case_count": 5,
+    "category_counts": {
+      "fault": 5
+    }
+  },
+  "artifacts": {
+    "flywheel-retry-v1": {
+      "path": "evals/results/flywheel-retry-v1.jsonl",
+      "sha256": "cb61837120b2a5d1ece4d38809643e75889d5a5be770d6b54c0e9fe4b1a93b71",
+      "case_count": 5,
+      "run_indices": [
+        1,
+        2,
+        3
+      ],
+      "metrics": {
+        "runs": 15,
+        "passed": 13,
+        "task_success_rate": 0.8667,
+        "fake_completions": 0,
+        "fake_completion_rate": 0.0,
+        "run_errors": 0,
+        "run_error_rate": 0.0,
+        "assertions": 36,
+        "assertions_passed": 32,
+        "assertion_pass_rate": 0.8889,
+        "average_steps": 5.2,
+        "average_duration_s": 62.77
+      },
+      "by_category": {
+        "fault": {
+          "runs": 15,
+          "passed": 13,
+          "task_success_rate": 0.8667,
+          "fake_completions": 0,
+          "fake_completion_rate": 0.0,
+          "run_errors": 0,
+          "run_error_rate": 0.0,
+          "assertions": 36,
+          "assertions_passed": 32,
+          "assertion_pass_rate": 0.8889,
+          "average_steps": 5.2,
+          "average_duration_s": 62.77
+        }
+      }
+    }
+  }
+}

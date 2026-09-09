@@ -1,0 +1,265 @@
+{
+  "schema_version": "1.0",
+  "baseline_id": "firewall-current",
+  "captured_at": "2026-09-05T23:09:51+08:00",
+  "source": {
+    "commit": "8a708657ad011054a22b9d6e5fda3dfa7f893520",
+    "short_commit": "8a70865",
+    "subject": "feat: 新增评测体系——30 条防火墙用例 + A/B 对照 + RAG 对照实验",
+    "worktree_dirty": true
+  },
+  "configuration": {
+    "provenance": "从当前源码默认值补录；历史 JSONL 未逐次记录运行时配置，后续轨迹版本将改为每次运行直接采集",
+    "primary_tag": "current",
+    "comparison_tag": "legacy",
+    "expected_runs_per_case": 3,
+    "model": "qwen-max",
+    "planner_temperature": 0,
+    "executor_temperature": 0,
+    "replanner_temperature": 0,
+    "max_agent_steps": 8
+  },
+  "metric_definitions": {
+    "task_success_rate": "passed=true 的运行数 / 运行总数；passed 要求所有终态断言通过且 runner 无错误",
+    "fake_completion_rate": "fake_complete=true 的运行数 / 运行总数；表示报告声称成功但终态断言未通过",
+    "run_error_rate": "runner 或 Agent 产生非空 error 的运行数 / 运行总数",
+    "assertion_pass_rate": "通过的确定性终态断言数 / 全部终态断言数",
+    "average_steps": "每次运行产生的 step_complete 事件数的算术平均值",
+    "average_duration_s": "每次运行墙钟耗时（秒）的算术平均值"
+  },
+  "dataset": {
+    "path": "evals/cases_firewall.json",
+    "sha256": "6b73878ae3b3a5170a594757b985711767b2bcebb1023aad86d34bd57f1e539a",
+    "case_count": 30,
+    "category_counts": {
+      "change": 8,
+      "delete": 4,
+      "error": 6,
+      "fault": 6,
+      "modify": 4,
+      "readonly": 2
+    }
+  },
+  "artifacts": {
+    "current": {
+      "path": "evals/results/current.jsonl",
+      "sha256": "c4b0de6d84ffdcc35206099ecee68a6ec5216fb4f250f194ba2c505cba16578c",
+      "case_count": 30,
+      "run_indices": [
+        1,
+        2,
+        3
+      ],
+      "metrics": {
+        "runs": 90,
+        "passed": 56,
+        "task_success_rate": 0.6222,
+        "fake_completions": 13,
+        "fake_completion_rate": 0.1444,
+        "run_errors": 6,
+        "run_error_rate": 0.0667,
+        "assertions": 240,
+        "assertions_passed": 159,
+        "assertion_pass_rate": 0.6625,
+        "average_steps": 5.6,
+        "average_duration_s": 180.34
+      },
+      "by_category": {
+        "change": {
+          "runs": 24,
+          "passed": 18,
+          "task_success_rate": 0.75,
+          "fake_completions": 1,
+          "fake_completion_rate": 0.0417,
+          "run_errors": 2,
+          "run_error_rate": 0.0833,
+          "assertions": 75,
+          "assertions_passed": 55,
+          "assertion_pass_rate": 0.7333,
+          "average_steps": 6.71,
+          "average_duration_s": 101.81
+        },
+        "delete": {
+          "runs": 12,
+          "passed": 7,
+          "task_success_rate": 0.5833,
+          "fake_completions": 2,
+          "fake_completion_rate": 0.1667,
+          "run_errors": 2,
+          "run_error_rate": 0.1667,
+          "assertions": 36,
+          "assertions_passed": 24,
+          "assertion_pass_rate": 0.6667,
+          "average_steps": 5.42,
+          "average_duration_s": 65.49
+        },
+        "error": {
+          "runs": 18,
+          "passed": 14,
+          "task_success_rate": 0.7778,
+          "fake_completions": 3,
+          "fake_completion_rate": 0.1667,
+          "run_errors": 0,
+          "run_error_rate": 0.0,
+          "assertions": 36,
+          "assertions_passed": 28,
+          "assertion_pass_rate": 0.7778,
+          "average_steps": 4.72,
+          "average_duration_s": 218.79
+        },
+        "fault": {
+          "runs": 18,
+          "passed": 8,
+          "task_success_rate": 0.4444,
+          "fake_completions": 2,
+          "fake_completion_rate": 0.1111,
+          "run_errors": 1,
+          "run_error_rate": 0.0556,
+          "assertions": 45,
+          "assertions_passed": 22,
+          "assertion_pass_rate": 0.4889,
+          "average_steps": 6.11,
+          "average_duration_s": 247.67
+        },
+        "modify": {
+          "runs": 12,
+          "passed": 5,
+          "task_success_rate": 0.4167,
+          "fake_completions": 3,
+          "fake_completion_rate": 0.25,
+          "run_errors": 1,
+          "run_error_rate": 0.0833,
+          "assertions": 27,
+          "assertions_passed": 11,
+          "assertion_pass_rate": 0.4074,
+          "average_steps": 5.5,
+          "average_duration_s": 356.76
+        },
+        "readonly": {
+          "runs": 6,
+          "passed": 4,
+          "task_success_rate": 0.6667,
+          "fake_completions": 2,
+          "fake_completion_rate": 0.3333,
+          "run_errors": 0,
+          "run_error_rate": 0.0,
+          "assertions": 21,
+          "assertions_passed": 19,
+          "assertion_pass_rate": 0.9048,
+          "average_steps": 2.83,
+          "average_duration_s": 53.97
+        }
+      }
+    },
+    "legacy": {
+      "path": "evals/results/legacy.jsonl",
+      "sha256": "a94a0c8bb203307b2a8fdfe0e9e9028059d565a9c2211475a45bdcf682936605",
+      "case_count": 16,
+      "run_indices": [
+        1,
+        2,
+        3
+      ],
+      "metrics": {
+        "runs": 48,
+        "passed": 20,
+        "task_success_rate": 0.4167,
+        "fake_completions": 24,
+        "fake_completion_rate": 0.5,
+        "run_errors": 2,
+        "run_error_rate": 0.0417,
+        "assertions": 138,
+        "assertions_passed": 68,
+        "assertion_pass_rate": 0.4928,
+        "average_steps": 3.69,
+        "average_duration_s": 51.97
+      },
+      "by_category": {
+        "change": {
+          "runs": 24,
+          "passed": 7,
+          "task_success_rate": 0.2917,
+          "fake_completions": 17,
+          "fake_completion_rate": 0.7083,
+          "run_errors": 2,
+          "run_error_rate": 0.0833,
+          "assertions": 75,
+          "assertions_passed": 28,
+          "assertion_pass_rate": 0.3733,
+          "average_steps": 4.17,
+          "average_duration_s": 66.8
+        },
+        "delete": {
+          "runs": 12,
+          "passed": 8,
+          "task_success_rate": 0.6667,
+          "fake_completions": 1,
+          "fake_completion_rate": 0.0833,
+          "run_errors": 0,
+          "run_error_rate": 0.0,
+          "assertions": 36,
+          "assertions_passed": 27,
+          "assertion_pass_rate": 0.75,
+          "average_steps": 3.08,
+          "average_duration_s": 37.3
+        },
+        "modify": {
+          "runs": 12,
+          "passed": 5,
+          "task_success_rate": 0.4167,
+          "fake_completions": 6,
+          "fake_completion_rate": 0.5,
+          "run_errors": 0,
+          "run_error_rate": 0.0,
+          "assertions": 27,
+          "assertions_passed": 13,
+          "assertion_pass_rate": 0.4815,
+          "average_steps": 3.33,
+          "average_duration_s": 36.99
+        }
+      }
+    }
+  },
+  "ab_comparison": {
+    "scope": "两个结果文件共有的 (case_id, run)；用于同口径 A/B",
+    "case_count": 16,
+    "runs": 48,
+    "categories": [
+      "change",
+      "delete",
+      "modify"
+    ],
+    "primary": {
+      "runs": 48,
+      "passed": 30,
+      "task_success_rate": 0.625,
+      "fake_completions": 6,
+      "fake_completion_rate": 0.125,
+      "run_errors": 5,
+      "run_error_rate": 0.1042,
+      "assertions": 138,
+      "assertions_passed": 90,
+      "assertion_pass_rate": 0.6522,
+      "average_steps": 6.08,
+      "average_duration_s": 156.47
+    },
+    "comparison": {
+      "runs": 48,
+      "passed": 20,
+      "task_success_rate": 0.4167,
+      "fake_completions": 24,
+      "fake_completion_rate": 0.5,
+      "run_errors": 2,
+      "run_error_rate": 0.0417,
+      "assertions": 138,
+      "assertions_passed": 68,
+      "assertion_pass_rate": 0.4928,
+      "average_steps": 3.69,
+      "average_duration_s": 51.97
+    },
+    "delta": {
+      "task_success_rate_pp": 20.83,
+      "fake_completion_rate_pp": -37.5
+    }
+  }
+}

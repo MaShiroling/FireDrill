@@ -1,0 +1,42 @@
+[
+  {"q": "CPU使用率持续超过80%的告警怎么处理", "doc": "cpu_high_usage.md"},
+  {"q": "服务器负载很高，应用响应变慢，怀疑是CPU瓶颈，怎么排查", "doc": "cpu_high_usage.md"},
+  {"q": "定时任务重叠执行导致CPU周期性升高怎么办", "doc": "cpu_high_usage.md"},
+  {"q": "数据库慢查询会导致应用CPU飙高吗", "doc": "cpu_high_usage.md"},
+  {"q": "HighCPUUsage 告警的触发条件和告警级别是什么", "doc": "cpu_high_usage.md"},
+  {"q": "进程死循环导致单进程CPU占用接近100%如何处理", "doc": "cpu_high_usage.md"},
+  {"q": "流量突增时CPU升高，应该扩容还是限流", "doc": "cpu_high_usage.md"},
+
+  {"q": "内存使用率超过85%的告警处理方案", "doc": "memory_high_usage.md"},
+  {"q": "应用频繁GC还出现了OOM，怎么排查", "doc": "memory_high_usage.md"},
+  {"q": "Full GC之后内存无法释放，应用运行越久内存占用越高，是什么原因", "doc": "memory_high_usage.md"},
+  {"q": "JVM堆内存参数怎么调整，-Xmx设置不合理会怎样", "doc": "memory_high_usage.md"},
+  {"q": "如何用MAT工具分析堆转储文件定位内存泄漏", "doc": "memory_high_usage.md"},
+  {"q": "缓存命中率低导致内存占用过大怎么办", "doc": "memory_high_usage.md"},
+  {"q": "jmap生成堆转储的命令是什么", "doc": "memory_high_usage.md"},
+
+  {"q": "磁盘使用率超过90%的告警怎么处理", "doc": "disk_high_usage.md"},
+  {"q": "应用日志报 No space left on device 怎么排查", "doc": "disk_high_usage.md"},
+  {"q": "/var/log 目录日志文件太大，怎么清理和配置轮转", "doc": "disk_high_usage.md"},
+  {"q": "Docker镜像和停止的容器占用大量磁盘怎么清理", "doc": "disk_high_usage.md"},
+  {"q": "怎么查找磁盘上占用空间最大的目录", "doc": "disk_high_usage.md"},
+  {"q": "历史备份文件占满磁盘，备份策略怎么优化", "doc": "disk_high_usage.md"},
+  {"q": "df -h 和 du 命令分别怎么用来查磁盘", "doc": "disk_high_usage.md"},
+
+  {"q": "P99响应时间持续超过3秒怎么排查", "doc": "slow_response.md"},
+  {"q": "服务响应突然变慢，用户投诉体验差，怎么办", "doc": "slow_response.md"},
+  {"q": "数据库慢查询导致接口响应超时的优化方法", "doc": "slow_response.md"},
+  {"q": "缓存穿透和缓存失效怎么防", "doc": "slow_response.md"},
+  {"q": "调用第三方API超时，超时时间和熔断策略怎么设置", "doc": "slow_response.md"},
+  {"q": "接口性能优化的检查清单包含哪些项", "doc": "slow_response.md"},
+  {"q": "跨地域调用网络延迟高、丢包率上升怎么办", "doc": "slow_response.md"},
+
+  {"q": "服务健康检查全部失败怎么应急处理", "doc": "service_unavailable.md"},
+  {"q": "服务完全不可用，用户无法访问，应急响应流程是什么", "doc": "service_unavailable.md"},
+  {"q": "数据库连接池耗尽报 Connection refused 怎么办", "doc": "service_unavailable.md"},
+  {"q": "新版本发布后服务起不来，怎么快速回滚", "doc": "service_unavailable.md"},
+  {"q": "故障复盘需要记录哪些内容", "doc": "service_unavailable.md"},
+  {"q": "故障15分钟未恢复要升级到哪一级", "doc": "service_unavailable.md"},
+  {"q": "熔断、降级、限流分别是什么，什么时候用", "doc": "service_unavailable.md"},
+  {"q": "如何通过故障演练和混沌工程提升系统韧性", "doc": "service_unavailable.md"}
+]

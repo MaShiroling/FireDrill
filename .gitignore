@@ -1,0 +1,92 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv
+
+# uv
+.uv/
+
+# 项目内工具链（本地下载的 uv 等）
+.tools/
+
+# Poetry (legacy)
+poetry.lock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# CodeBuddy
+.codebuddy/
+
+# Environment
+.env
+.env.local
+
+# Logs
+logs/
+*.log
+*.pid
+
+# Database
+*.db
+*.sqlite
+
+# Milvus
+volumes/
+
+# Uploads
+uploads/
+*.tmp
+
+# 评测运行日志（含环境信息的进程日志，不入库；结果数据 jsonl 保留）
+evals/results/*.log
+# 每次 Agent 执行产生的结构化轨迹可能包含运行环境信息，不直接入库
+evals/artifacts/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Ruff
+.ruff_cache/
+
+
+# 模拟面试存档（本地专用，不上传）
+docs/mock-interview.md

@@ -1,0 +1,268 @@
+[
+  {
+    "id": "FW-C01", "category": "change", "expect_success": true,
+    "task": "防火墙配置变更：请放通内网 trust 区 10.1.8.0/24 网段访问 DMZ 区 172.16.1.20 主机的 SSH（TCP 22 端口）流量。要求：先查看现有配置，将规则加入候选配置，diff 确认后提交生效，最后用模拟报文验证。",
+    "assert": [
+      {"type": "rule_present", "match": {"src_zone": "trust", "dst_zone": "dmz", "dst_addr": "172.16.1.20/32", "protocol": "tcp", "dst_port": "22", "action": "allow"}},
+      {"type": "revision", "op": ">", "value": 1},
+      {"type": "no_pending"},
+      {"type": "traffic", "packet": {"src_zone": "trust", "dst_zone": "dmz", "src_addr": "10.1.8.5", "dst_addr": "172.16.1.20", "protocol": "tcp", "dst_port": "22"}, "expect": "allow"}
+    ]
+  },
+  {
+    "id": "FW-C02", "category": "change", "expect_success": true,
+    "task": "请在防火墙上放通 trust 区 10.1.9.0/24 访问 DMZ 区 172.16.1.30 的 HTTPS（TCP 443）流量，提交生效并验证。",
+    "assert": [
+      {"type": "rule_present", "match": {"src_zone": "trust", "dst_zone": "dmz", "protocol": "tcp", "dst_port": "443", "action": "allow"}},
+      {"type": "revision", "op": ">", "value": 1},
+      {"type": "traffic", "packet": {"src_zone": "trust", "dst_zone": "dmz", "src_addr": "10.1.9.9", "dst_addr": "172.16.1.30", "protocol": "tcp", "dst_port": "443"}, "expect": "allow"}
+    ]
+  },
+  {
+    "id": "FW-C03", "category": "change", "expect_success": true,
+    "task": "DMZ 区服务器需要解析域名。请放通 dmz 区访问 untrust 区任意地址的 UDP 53（DNS）流量，提交并验证。",
+    "assert": [
+      {"type": "rule_present", "match": {"src_zone": "dmz", "dst_zone": "untrust", "protocol": "udp", "dst_port": "53", "action": "allow"}},
+      {"type": "revision", "op": ">", "value": 1},
+      {"type": "traffic", "packet": {"src_zone": "dmz", "dst_zone": "untrust", "src_addr": "172.16.1.10", "dst_addr": "8.8.8.8", "protocol": "udp", "dst_port": "53"}, "expect": "allow"}
+    ]
+  },
+  {
+    "id": "FW-C04", "category": "change", "expect_success": true,
+    "task": "请放通 trust 区全部主机访问 DMZ 区 172.16.1.20 的 HTTP（TCP 80）流量，提交生效并验证。",
+    "assert": [
+      {"type": "rule_present", "match": {"src_zone": "trust", "dst_zone": "dmz", "dst_addr": "172.16.1.20/32", "protocol": "tcp", "dst_port": "80", "action": "allow"}},
+      {"type": "revision", "op": ">", "value": 1},
+      {"type": "traffic", "packet": {"src_zone": "trust", "dst_zone": "dmz", "src_addr": "10.1.3.3", "dst_addr": "172.16.1.20", "protocol": "tcp", "dst_port": "80"}, "expect": "allow"}
+    ]
+  },
+  {
+    "id": "FW-C05", "category": "change", "expect_success": true,
+    "task": "安全要求：请在防火墙上显式禁止 trust 区 10.1.6.0/24 网段访问 untrust 区的 Telnet（TCP 23），提交生效并验证该流量被拒绝。",
+    "assert": [
+      {"type": "rule_present", "match": {"src_zone": "trust", "dst_zone": "untrust", "src_addr": "10.1.6.0/24", "protocol": "tcp", "dst_port": "23", "action": "deny"}},
+      {"type": "revision", "op": ">", "value": 1},
+      {"type": "traffic", "packet": {"src_zone": "trust", "dst_zone": "untrust", "src_addr": "10.1.6.6", "dst_addr": "9.9.9.9", "protocol": "tcp", "dst_port": "23"}, "expect": "deny"}
+    ]
+  },
+  {
+    "id": "FW-C06", "category": "change", "expect_success": true,
+    "task": "请在防火墙上放通 untrust 区访问 DMZ 区 172.16.1.10 的 HTTP（TCP 80）流量（现有规则只放通了 443），提交并验证。",
+    "assert": [
+      {"type": "rule_present", "match": {"src_zone": "untrust", "dst_zone": "dmz", "dst_addr": "172.16.1.10/32", "protocol": "tcp", "dst_port": "80", "action": "allow"}},
+      {"type": "revision", "op": ">", "value": 1},
+      {"type": "traffic", "packet": {"src_zone": "untrust", "dst_zone": "dmz", "src_addr": "6.6.6.6", "dst_addr": "172.16.1.10", "protocol": "tcp", "dst_port": "80"}, "expect": "allow"}
+    ]
+  },
+  {
+    "id": "FW-C07", "category": "change", "expect_success": true,
+    "task": "请放通 trust 区访问 untrust 区的 TCP 8443 端口流量，提交生效并验证。",
+    "assert": [
+      {"type": "rule_present", "match": {"src_zone": "trust", "dst_zone": "untrust", "protocol": "tcp", "dst_port": "8443", "action": "allow"}},
+      {"type": "revision", "op": ">", "value": 1},
+      {"type": "traffic", "packet": {"src_zone": "trust", "dst_zone": "untrust", "src_addr": "10.1.1.1", "dst_addr": "1.2.3.4", "protocol": "tcp", "dst_port": "8443"}, "expect": "allow"}
+    ]
+  },
+  {
+    "id": "FW-C08", "category": "change", "expect_success": true,
+    "task": "运维需要监控探测：请放通 trust 区 10.1.10.0/24 对 DMZ 区的 ICMP（ping）流量，提交并验证。",
+    "assert": [
+      {"type": "rule_present", "match": {"src_zone": "trust", "dst_zone": "dmz", "src_addr": "10.1.10.0/24", "protocol": "icmp", "action": "allow"}},
+      {"type": "revision", "op": ">", "value": 1},
+      {"type": "traffic", "packet": {"src_zone": "trust", "dst_zone": "dmz", "src_addr": "10.1.10.1", "dst_addr": "172.16.1.20", "protocol": "icmp", "dst_port": "0"}, "expect": "allow"}
+    ]
+  },
+  {
+    "id": "FW-D01", "category": "delete", "expect_success": true,
+    "task": "请删除防火墙上的 allow-web-http 规则（rule-001），提交生效，并验证 trust 区访问 untrust 的 TCP 80 已不再放通。",
+    "assert": [
+      {"type": "rule_absent", "match": {"src_zone": "trust", "dst_zone": "untrust", "protocol": "tcp", "dst_port": "80"}},
+      {"type": "revision", "op": ">", "value": 1},
+      {"type": "traffic", "packet": {"src_zone": "trust", "dst_zone": "untrust", "src_addr": "10.1.1.1", "dst_addr": "5.5.5.5", "protocol": "tcp", "dst_port": "80"}, "expect": "deny"}
+    ]
+  },
+  {
+    "id": "FW-D02", "category": "delete", "expect_success": true,
+    "task": "请删除防火墙上的 allow-public-to-web 规则（rule-004），提交生效，并验证互联网已无法访问 DMZ 的 443 端口。",
+    "assert": [
+      {"type": "rule_absent", "match": {"src_zone": "untrust", "dst_zone": "dmz", "protocol": "tcp", "dst_port": "443"}},
+      {"type": "revision", "op": ">", "value": 1},
+      {"type": "traffic", "packet": {"src_zone": "untrust", "dst_zone": "dmz", "src_addr": "6.6.6.6", "dst_addr": "172.16.1.10", "protocol": "tcp", "dst_port": "443"}, "expect": "deny"}
+    ]
+  },
+  {
+    "id": "FW-D03", "category": "delete", "expect_success": true,
+    "task": "请把防火墙规则 rule-005（block-dmz-to-trust）禁用（enabled=false），不要删除它，提交生效。",
+    "assert": [
+      {"type": "rule_field", "rule_id": "rule-005", "field": "enabled", "value": false},
+      {"type": "revision", "op": ">", "value": 1},
+      {"type": "rule_count", "value": 6}
+    ]
+  },
+  {
+    "id": "FW-D04", "category": "delete", "expect_success": true,
+    "task": "请删除防火墙上的 default-deny 规则（rule-006），提交生效，并确认 trust 区访问 untrust 的 443 仍然正常放通。",
+    "assert": [
+      {"type": "rule_absent", "match": {"name": "default-deny"}},
+      {"type": "revision", "op": ">", "value": 1},
+      {"type": "traffic", "packet": {"src_zone": "trust", "dst_zone": "untrust", "src_addr": "10.1.1.1", "dst_addr": "3.3.3.3", "protocol": "tcp", "dst_port": "443"}, "expect": "allow"}
+    ]
+  },
+  {
+    "id": "FW-M01", "category": "modify", "expect_success": true,
+    "task": "请把防火墙的 allow-dns 规则（rule-003）的协议从 udp 改为 tcp（端口保持 53），提交生效。",
+    "assert": [
+      {"type": "rule_field", "rule_id": "rule-003", "field": "protocol", "value": "tcp"},
+      {"type": "revision", "op": ">", "value": 1}
+    ]
+  },
+  {
+    "id": "FW-M02", "category": "modify", "expect_success": true,
+    "task": "请把防火墙的 allow-web-http 规则（rule-001）的目的端口从 80 改为 8080，提交生效并验证 8080 已放通。",
+    "assert": [
+      {"type": "rule_field", "rule_id": "rule-001", "field": "dst_port", "value": "8080"},
+      {"type": "revision", "op": ">", "value": 1},
+      {"type": "traffic", "packet": {"src_zone": "trust", "dst_zone": "untrust", "src_addr": "10.1.1.1", "dst_addr": "4.4.4.4", "protocol": "tcp", "dst_port": "8080"}, "expect": "allow"}
+    ]
+  },
+  {
+    "id": "FW-M03", "category": "modify", "expect_success": true,
+    "task": "请把防火墙规则 rule-005（block-dmz-to-trust）移动到规则列表的第 1 位（最高优先级），提交生效。",
+    "assert": [
+      {"type": "first_rule", "rule_id": "rule-005"},
+      {"type": "revision", "op": ">", "value": 1}
+    ]
+  },
+  {
+    "id": "FW-M04", "category": "modify", "expect_success": true,
+    "task": "请把防火墙的 default-deny 规则（rule-006）重命名为 deny-all-final，提交生效。",
+    "assert": [
+      {"type": "rule_field", "rule_id": "rule-006", "field": "name", "value": "deny-all-final"},
+      {"type": "revision", "op": ">", "value": 1}
+    ]
+  },
+  {
+    "id": "FW-E01", "category": "error", "expect_success": false,
+    "task": "请在防火墙上放通 trust 区访问 dmz 区 999.1.1.10 的 TCP 443 流量。",
+    "assert": [
+      {"type": "rule_count", "value": 6},
+      {"type": "revision", "op": "==", "value": 1}
+    ]
+  },
+  {
+    "id": "FW-E02", "category": "error", "expect_success": false,
+    "task": "请在防火墙上放通 trust 区访问 untrust 区的 TCP 70000 端口流量。",
+    "assert": [
+      {"type": "rule_count", "value": 6},
+      {"type": "revision", "op": "==", "value": 1}
+    ]
+  },
+  {
+    "id": "FW-E03", "category": "error", "expect_success": false,
+    "task": "请在防火墙上再添加一条与现有 allow-web-http 完全相同的规则（trust→untrust，any→any，tcp 80，allow）。",
+    "assert": [
+      {"type": "rule_count", "value": 6},
+      {"type": "revision", "op": "==", "value": 1}
+    ]
+  },
+  {
+    "id": "FW-E04", "category": "error", "expect_success": false,
+    "task": "请删除防火墙上的 rule-999 规则。",
+    "assert": [
+      {"type": "rule_count", "value": 6},
+      {"type": "revision", "op": "==", "value": 1}
+    ]
+  },
+  {
+    "id": "FW-E05", "category": "error", "expect_success": false,
+    "task": "防火墙当前没有任何候选改动，请直接把当前配置 commit 提交一下。",
+    "assert": [
+      {"type": "rule_count", "value": 6},
+      {"type": "revision", "op": "==", "value": 1}
+    ]
+  },
+  {
+    "id": "FW-E06", "category": "error", "expect_success": false,
+    "task": "请放通 office 区访问 dmz 区的 TCP 22 流量。",
+    "assert": [
+      {"type": "rule_count", "value": 6},
+      {"type": "revision", "op": "==", "value": 1}
+    ]
+  },
+  {
+    "id": "FW-F01", "category": "fault", "expect_success": true,
+    "scenario": {"fault": "commit_flaky", "fail_times": 1},
+    "task": "防火墙设备最近不太稳定，提交可能偶发失败。请放通 trust 区 10.1.7.0/24 访问 dmz 区 172.16.1.40 的 TCP 5432（PostgreSQL）流量，提交生效并验证。遇到失败请重试。",
+    "assert": [
+      {"type": "rule_present", "match": {"src_zone": "trust", "dst_zone": "dmz", "protocol": "tcp", "dst_port": "5432", "action": "allow"}},
+      {"type": "revision", "op": ">", "value": 1},
+      {"type": "traffic", "packet": {"src_zone": "trust", "dst_zone": "dmz", "src_addr": "10.1.7.7", "dst_addr": "172.16.1.40", "protocol": "tcp", "dst_port": "5432"}, "expect": "allow"}
+    ]
+  },
+  {
+    "id": "FW-F02", "category": "fault", "expect_success": true,
+    "scenario": {"fault": "commit_flaky", "fail_times": 2},
+    "task": "请放通 trust 区访问 untrust 区的 TCP 465（SMTPS）流量，提交生效并验证。如果提交失败请重试直到成功。",
+    "assert": [
+      {"type": "rule_present", "match": {"src_zone": "trust", "dst_zone": "untrust", "protocol": "tcp", "dst_port": "465", "action": "allow"}},
+      {"type": "revision", "op": ">", "value": 1}
+    ]
+  },
+  {
+    "id": "FW-F03", "category": "fault", "expect_success": false,
+    "scenario": {"fault": "commit_reject"},
+    "task": "请放通 trust 区 10.1.8.0/24 访问 dmz 区 172.16.1.20 的 TCP 22 流量，提交生效并验证。",
+    "assert": [
+      {"type": "rule_absent", "match": {"dst_addr": "172.16.1.20/32", "dst_port": "22"}, "scope": "running"},
+      {"type": "revision", "op": "==", "value": 1}
+    ]
+  },
+  {
+    "id": "FW-F04", "category": "fault", "expect_success": true,
+    "scenario": {"fault": "commit_lose"},
+    "task": "请放通 trust 区 10.1.8.0/24 访问 dmz 区 172.16.1.20 的 TCP 3306（MySQL）流量。注意：设备可能在提交时不返回确认，如果提交结果不明确，请核实设备真实状态再下结论。",
+    "assert": [
+      {"type": "rule_present", "match": {"protocol": "tcp", "dst_port": "3306", "action": "allow"}},
+      {"type": "revision", "op": ">", "value": 1},
+      {"type": "recheck_after_failed_commit"}
+    ]
+  },
+  {
+    "id": "FW-F05", "category": "fault", "expect_success": true,
+    "scenario": {"fault": "commit_flaky", "fail_times": 1},
+    "task": "请删除防火墙的 allow-dns 规则（rule-003），提交生效。设备提交可能偶发失败，失败请重试。",
+    "assert": [
+      {"type": "rule_absent", "match": {"rule_id": "rule-003"}},
+      {"type": "revision", "op": ">", "value": 1}
+    ]
+  },
+  {
+    "id": "FW-F06", "category": "fault", "expect_success": true,
+    "scenario": {"fault": "commit_lose"},
+    "task": "请把防火墙 allow-web-https 规则（rule-002）的端口从 443 改为 4443 并提交。设备提交可能不返回确认，请核实真实状态后再报告结果。",
+    "assert": [
+      {"type": "rule_field", "rule_id": "rule-002", "field": "dst_port", "value": "4443"},
+      {"type": "revision", "op": ">", "value": 1},
+      {"type": "recheck_after_failed_commit"}
+    ]
+  },
+  {
+    "id": "FW-R01", "category": "readonly", "expect_success": true,
+    "task": "请确认当前防火墙是否放通了 trust 区访问 untrust 区的 HTTPS（TCP 443）流量？不要修改任何配置，用模拟报文验证后告诉我结论。",
+    "assert": [
+      {"type": "revision", "op": "==", "value": 1},
+      {"type": "rule_count", "value": 6},
+      {"type": "hit", "rule_id": "rule-002", "min": 1}
+    ]
+  },
+  {
+    "id": "FW-R02", "category": "readonly", "expect_success": true,
+    "task": "请列出防火墙当前所有生效规则，并说明最后一条规则的作用。不要做任何修改。",
+    "assert": [
+      {"type": "revision", "op": "==", "value": 1},
+      {"type": "rule_count", "value": 6},
+      {"type": "no_pending"},
+      {"type": "report_contains", "value": "deny"}
+    ]
+  }
+]
