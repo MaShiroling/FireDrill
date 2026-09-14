@@ -26,3 +26,6 @@ class PlanExecuteState(TypedDict):
     # 长期记忆隔离域；由服务入口设置，Planner 只检索该租户和设备类型。
     memory_tenant_id: NotRequired[str]
     memory_device_type: NotRequired[str]
+
+    # 工具执行安全策略；False 时 Executor 硬拦截所有配置写工具。
+    allow_write: NotRequired[bool]

@@ -4,6 +4,7 @@ import pytest
 from langchain_core.messages import AIMessage, ToolMessage
 
 from app.agent.aiops.executor import (
+    blocked_write_tools,
     execute_selected_tools,
     requires_sequential_tool_execution,
 )
@@ -42,6 +43,20 @@ def test_stateful_batch_requires_sequential_execution() -> None:
     assert requires_sequential_tool_execution(calls) is True
     assert requires_sequential_tool_execution(calls[1:]) is False
     assert requires_sequential_tool_execution(calls[:1]) is False
+
+
+def test_read_only_policy_blocks_stateful_tools() -> None:
+    calls = [
+        _call("list_firewall_rules", "call-1"),
+        _call("add_firewall_rule", "call-2"),
+        _call("commit_config", "call-3"),
+    ]
+
+    assert blocked_write_tools(calls, allow_write=False) == [
+        "add_firewall_rule",
+        "commit_config",
+    ]
+    assert blocked_write_tools(calls, allow_write=True) == []
 
 
 @pytest.mark.asyncio

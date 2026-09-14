@@ -3,14 +3,59 @@ AIOps 智能运维接口
 """
 
 import json
-from fastapi import APIRouter
-from sse_starlette.sse import EventSourceResponse
-from loguru import logger
 
-from app.models.aiops import AIOpsRequest
+from fastapi import APIRouter
+from loguru import logger
+from sse_starlette.sse import EventSourceResponse
+
+from app.models.aiops import AgentExecuteRequest, AIOpsRequest
 from app.services.aiops_service import aiops_service
 
 router = APIRouter()
+
+
+@router.post("/agent/execute")
+async def execute_agent(request: AgentExecuteRequest):
+    """通过通用 Plan-Execute-Replan 工作流流式执行用户任务。"""
+    logger.info(f"[会话 {request.session_id}] 收到通用 Agent 执行请求: {request.task}")
+
+    async def event_generator():
+        try:
+            async for event in aiops_service.execute(
+                user_input=request.task,
+                session_id=request.session_id,
+                trace_metadata={"entrypoint": "api_agent_execute"},
+                memory_tenant_id=request.tenant_id,
+                memory_device_type=request.device_type,
+                allow_write=request.allow_write,
+            ):
+                yield {
+                    "event": "message",
+                    "data": json.dumps(event, ensure_ascii=False),
+                }
+
+                if event.get("type") in {"complete", "error"}:
+                    break
+
+            logger.info(f"[会话 {request.session_id}] 通用 Agent 流式响应完成")
+        except Exception as exc:
+            logger.error(
+                f"[会话 {request.session_id}] 通用 Agent 流式响应异常: {exc}",
+                exc_info=True,
+            )
+            yield {
+                "event": "message",
+                "data": json.dumps(
+                    {
+                        "type": "error",
+                        "stage": "exception",
+                        "message": f"任务执行异常: {exc!s}",
+                    },
+                    ensure_ascii=False,
+                ),
+            }
+
+    return EventSourceResponse(event_generator())
 
 
 @router.post("/aiops")

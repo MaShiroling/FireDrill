@@ -41,6 +41,19 @@ def requires_sequential_tool_execution(tool_calls: list[dict[str, Any]]) -> bool
     )
 
 
+def blocked_write_tools(
+    tool_calls: list[dict[str, Any]], *, allow_write: bool
+) -> list[str]:
+    """返回被只读执行策略拦截的配置写工具。"""
+    if allow_write:
+        return []
+    return [
+        str(tool_call.get("name", ""))
+        for tool_call in tool_calls
+        if str(tool_call.get("name", "")) in STATEFUL_TOOL_NAMES
+    ]
+
+
 async def execute_selected_tools(
     tool_node: ToolNode,
     messages: list[Any],
@@ -142,6 +155,8 @@ async def executor(state: PlanExecuteState) -> dict[str, Any]:
 - rule_id 必须使用用户明确给出的值或此前工具真实返回的值（格式如 rule-003），禁止猜测或生成 new-rule-001 等虚假 ID
 - 只有规则名称而没有 rule_id 时，应先调用 list_firewall_rules 查出真实 ID，再在后续步骤使用
 - get_firewall_rule、update_firewall_rule、delete_firewall_rule、move_firewall_rule 的规则定位参数都是 rule_id
+- test_traffic 的 src_addr 和 dst_addr 必须传单个主机 IP，禁止传 10.1.9.0/24 形式的 CIDR；
+  若任务只给出网段，选择该网段内的合法主机 IP（如 10.1.9.1）作为模拟报文地址
 - 已执行历史仅用于复用真实结果；如果历史已显示提交成功，不要重复 commit_config"""),
             HumanMessage(content=f"{execution_context}\n\n当前只执行这一步：\n{task}"),
         ]
@@ -159,6 +174,25 @@ async def executor(state: PlanExecuteState) -> dict[str, Any]:
         # 第二步：如果有工具调用，执行工具
         if hasattr(llm_response, "tool_calls") and llm_response.tool_calls:
             logger.info(f"检测到 {len(llm_response.tool_calls)} 个工具调用")
+            blocked_tools = blocked_write_tools(
+                llm_response.tool_calls,
+                allow_write=state.get("allow_write", True),
+            )
+            if blocked_tools:
+                result = (
+                    "安全策略已拦截配置写操作："
+                    f"{', '.join(blocked_tools)}。本次任务只允许调用只读工具。"
+                )
+                logger.warning(result)
+                trace_event(
+                    "write_tools_blocked",
+                    node="executor",
+                    data={"tool_names": blocked_tools, "step": task},
+                )
+                return {
+                    "plan": plan[1:],
+                    "past_steps": [(task, result)],
+                }
             for tool_call in llm_response.tool_calls:
                 trace_event(
                     "tool_call_requested",

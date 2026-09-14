@@ -263,7 +263,16 @@ CHUNK_OVERLAP=100
 AGENT_TRACE_ENABLED=true
 AGENT_TRACE_DIR=evals/artifacts/runs
 AGENT_TRACE_MAX_VALUE_CHARS=8000
+
+# 意图识别：规则优先，仅对低置信度运维请求调用轻量 LLM
+INTENT_LLM_ENABLED=true
+INTENT_LLM_MODEL=qwen-turbo
+INTENT_LLM_TIMEOUT_S=3
+INTENT_LLM_MIN_CONFIDENCE=0.8
 ```
+
+LLM 意图识别超时、输出非法或置信度不足时，系统会降级为请求用户澄清；
+规则已识别出的写风险不能被 LLM 降级，配置变更仍需用户确认。
 
 防火墙评测采用带外终态硬断言，不使用 LLM 打分；结果会同时输出稳定失败码与证据，详见
 [`evals/EVALUATION_SCHEMA.md`](evals/EVALUATION_SCHEMA.md)。

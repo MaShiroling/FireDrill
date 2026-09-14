@@ -2,7 +2,7 @@
 class FireDrillApp {
     constructor() {
         this.apiBaseUrl = 'http://localhost:9900/api';
-        this.currentMode = 'quick'; // 'quick' 或 'stream'
+        this.currentMode = 'auto'; // 'auto'、'stream' 或 'agent'
         this.sessionId = this.generateSessionId();
         this.isStreaming = false;
         this.currentChatHistory = []; // 当前对话的消息历史
@@ -266,8 +266,8 @@ class FireDrillApp {
         // 生成新的会话ID
         this.sessionId = this.generateSessionId();
         
-        // 重置模式为快速
-        this.currentMode = 'quick';
+        // 新对话默认使用意图与风险智能路由
+        this.currentMode = 'auto';
         this.updateUI();
         
         // 重新设置居中样式（确保对话框居中显示）
@@ -579,8 +579,9 @@ class FireDrillApp {
         this.updateUI();
         
         const modeNames = {
-            'quick': '快速',
-            'stream': '流式'
+            'auto': '智能路由',
+            'stream': '智能问答',
+            'agent': 'Agent 执行'
         };
         
         this.showNotification(`已切换到${modeNames[mode]}模式`, 'info');
@@ -591,10 +592,11 @@ class FireDrillApp {
         // 更新模式选择器显示
         if (this.currentModeText) {
             const modeNames = {
-                'quick': '快速',
-                'stream': '流式'
+                'auto': '智能路由',
+                'stream': '智能问答',
+                'agent': 'Agent 执行'
             };
-            this.currentModeText.textContent = modeNames[this.currentMode] || '快速';
+            this.currentModeText.textContent = modeNames[this.currentMode] || '智能路由';
         }
         
         // 更新下拉菜单选中状态
@@ -655,10 +657,12 @@ class FireDrillApp {
         this.updateUI();
 
         try {
-            if (this.currentMode === 'quick') {
-                await this.sendQuickMessage(message);
+            if (this.currentMode === 'auto') {
+                await this.sendAutoRoutedMessage(message);
             } else if (this.currentMode === 'stream') {
                 await this.sendStreamMessage(message);
+            } else if (this.currentMode === 'agent') {
+                await this.sendAgentWithRiskCheck(message, true);
             }
         } catch (error) {
             console.error('发送消息失败:', error);
@@ -732,6 +736,73 @@ class FireDrillApp {
             }
             throw error;
         }
+    }
+
+    // 请求后端进行可解释的意图与风险识别
+    async classifyIntent(message) {
+        const response = await fetch(`${this.apiBaseUrl}/intent/classify`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ text: message })
+        });
+
+        if (!response.ok) {
+            throw new Error(`意图识别失败: HTTP ${response.status}`);
+        }
+        return response.json();
+    }
+
+    // 默认入口：按识别结果路由，写操作和不确定请求不会静默执行
+    async sendAutoRoutedMessage(message) {
+        const decision = await this.classifyIntent(message);
+        console.log('[Intent] 识别结果:', decision);
+
+        if (decision.route === 'rag') {
+            this.showNotification('已识别为知识问答', 'info');
+            await this.sendStreamMessage(message);
+            return;
+        }
+
+        if (decision.route === 'agent') {
+            this.showNotification('已识别为只读运维任务', 'info');
+            await this.sendAgentMessage(message, false);
+            return;
+        }
+
+        if (decision.route === 'confirm') {
+            const confirmed = window.confirm(
+                `检测到配置变更（风险：${decision.risk}）。\n\n${decision.reason}\n\n是否进入 Agent 执行？`
+            );
+            if (confirmed) {
+                await this.sendAgentMessage(message, true);
+            } else {
+                this.addMessage('assistant', '已取消执行，防火墙配置未通过本次请求修改。');
+            }
+            return;
+        }
+
+        this.addMessage(
+            'assistant',
+            `我无法确定你想查询还是修改配置。${decision.reason}\n\n请补充“只查询”或明确要执行的变更。`
+        );
+    }
+
+    // 手动选择 Agent 时仍执行风险识别；明确写操作必须再次确认
+    async sendAgentWithRiskCheck(message, manualSelection = false) {
+        const decision = await this.classifyIntent(message);
+        if (decision.risk === 'write' || decision.risk === 'unknown') {
+            const confirmed = window.confirm(
+                `${manualSelection ? '你已选择 Agent 执行。' : ''}` +
+                `识别风险：${decision.risk}。\n\n${decision.reason}\n\n是否继续？`
+            );
+            if (!confirmed) {
+                this.addMessage('assistant', '已取消执行，本次请求没有进入 Agent 工作流。');
+                return;
+            }
+        }
+        await this.sendAgentMessage(message, decision.risk !== 'read_only');
     }
 
     // 发送流式消息
@@ -873,6 +944,122 @@ class FireDrillApp {
                 reader.releaseLock();
             }
         } catch (error) {
+            throw error;
+        }
+    }
+
+    // 通过 Plan-Execute-Replan Agent 执行防火墙变更或多步骤运维任务
+    async sendAgentMessage(message, allowWrite = true) {
+        const loadingMessage = this.addLoadingMessage('Agent 正在制定执行计划...');
+
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/agent/execute`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    session_id: this.sessionId,
+                    task: message,
+                    tenant_id: 'local',
+                    device_type: 'firewall',
+                    allow_write: allowWrite
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP错误: ${response.status}`);
+            }
+            if (!response.body) {
+                throw new Error('浏览器未收到 Agent 事件流');
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            const progress = [];
+            let buffer = '';
+            let finalResponse = '';
+            let completed = false;
+
+            const renderProgress = () => {
+                const sections = [];
+                if (progress.length > 0) {
+                    sections.push(`## 执行过程\n\n${progress.join('\n')}`);
+                }
+                if (finalResponse) {
+                    sections.push(`## 执行结果\n\n${finalResponse}`);
+                }
+                this.updateAIOpsStreamContent(loadingMessage, sections.join('\n\n'));
+            };
+
+            const handleEvent = (event) => {
+                switch (event.type) {
+                    case 'trace_started':
+                        progress.push(`- 已创建执行轨迹：${event.trace_id || '成功'}`);
+                        break;
+                    case 'plan': {
+                        const plan = Array.isArray(event.plan) ? event.plan : [];
+                        progress.push(`- **执行计划（${plan.length} 步）**`);
+                        plan.forEach((step, index) => {
+                            progress.push(`  ${index + 1}. ${step}`);
+                        });
+                        break;
+                    }
+                    case 'step_complete':
+                        progress.push(`- ✅ ${event.message || event.current_step || '步骤执行完成'}`);
+                        break;
+                    case 'status':
+                        progress.push(`- ⏳ ${event.message || 'Agent 正在处理'}`);
+                        break;
+                    case 'report':
+                        finalResponse = event.report || finalResponse;
+                        break;
+                    case 'complete':
+                        finalResponse = event.response || finalResponse || event.message || '任务执行完成';
+                        completed = true;
+                        break;
+                    case 'error':
+                        throw new Error(event.message || 'Agent 执行失败');
+                    default:
+                        break;
+                }
+                renderProgress();
+            };
+
+            try {
+                while (!completed) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || '';
+
+                    for (const line of lines) {
+                        if (!line.startsWith('data:')) continue;
+                        const rawData = line.substring(5).trim();
+                        if (!rawData || rawData === '[DONE]') continue;
+                        handleEvent(JSON.parse(rawData));
+                        if (completed) break;
+                    }
+                }
+            } finally {
+                reader.releaseLock();
+            }
+
+            if (!completed && buffer.startsWith('data:')) {
+                const rawData = buffer.substring(5).trim();
+                if (rawData && rawData !== '[DONE]') {
+                    handleEvent(JSON.parse(rawData));
+                }
+            }
+
+            const result = finalResponse || 'Agent 事件流已结束，但没有返回最终结果。';
+            this.updateAIOpsMessage(loadingMessage, result, progress);
+        } catch (error) {
+            if (loadingMessage && loadingMessage.parentNode) {
+                loadingMessage.parentNode.removeChild(loadingMessage);
+            }
             throw error;
         }
     }

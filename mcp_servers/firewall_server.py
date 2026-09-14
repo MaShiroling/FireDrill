@@ -558,12 +558,34 @@ class FirewallState:
             return int(m.group(1)) <= int(packet_port) <= int(m.group(2))
         return rule_port == str(packet_port)
 
+    @staticmethod
+    def _validate_packet_ip(addr: str, field: str) -> Optional[str]:
+        """校验模拟报文地址，CIDR 只用于规则，不能作为单个报文地址。"""
+        try:
+            ipaddress.ip_address(addr)
+            return None
+        except ValueError:
+            try:
+                network = ipaddress.ip_network(addr, strict=False)
+                representative = next(network.hosts(), network.network_address)
+                return (
+                    f"{field} 非法: '{addr}'，模拟报文必须使用单个 IP，"
+                    f"不能使用 CIDR；可从该网段选择 {representative}"
+                )
+            except ValueError:
+                return f"{field} 非法: '{addr}'，模拟报文必须使用合法的单个 IP"
+
     def test_traffic(self, src_zone, dst_zone, src_addr, dst_addr,
                      protocol, dst_port) -> Dict[str, Any]:
         params = {"src_zone": src_zone, "dst_zone": dst_zone, "src_addr": src_addr,
                   "dst_addr": dst_addr, "protocol": protocol, "dst_port": dst_port}
         for err in (self._validate_zone(src_zone, "src_zone"),
                     self._validate_zone(dst_zone, "dst_zone")):
+            if err:
+                self._audit("test_traffic", params, "error", err)
+                return {"success": False, "error": err}
+        for err in (self._validate_packet_ip(src_addr, "src_addr"),
+                    self._validate_packet_ip(dst_addr, "dst_addr")):
             if err:
                 self._audit("test_traffic", params, "error", err)
                 return {"success": False, "error": err}
@@ -889,8 +911,8 @@ def test_traffic(
     Args:
         src_zone: 源安全域，trust/dmz/untrust
         dst_zone: 目的安全域，trust/dmz/untrust
-        src_addr: 源 IP，如 "10.1.2.3"
-        dst_addr: 目的 IP，如 "172.16.1.10"
+        src_addr: 单个源 IP，如 "10.1.2.3"；不能传 CIDR 网段
+        dst_addr: 单个目的 IP，如 "172.16.1.10"；不能传 CIDR 网段
         protocol: 协议，tcp/udp/icmp
         dst_port: 目的端口（icmp 时忽略），默认 "80"
 

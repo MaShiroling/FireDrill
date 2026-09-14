@@ -60,6 +60,9 @@ planner_prompt = ChatPromptTemplate.from_messages(
                 - 用户给出 rule-003 形式的规则 ID 时，所有查询、修改、删除步骤必须原样携带该 ID
                 - 只有规则名称但没有规则 ID 时，先用 list_firewall_rules 查询真实 ID；不得把名称当作 rule_id
                 - 新增规则的 ID 由 add_firewall_rule 返回，后续步骤必须复用实际返回值，禁止预先猜测 ID
+                - 使用 test_traffic 验证时，src_addr 和 dst_addr 必须是单个主机 IP，不能传 CIDR 网段；
+                  如果任务只给出网段，应从网段中选择一个合法主机地址作为模拟报文地址（如从
+                  10.1.9.0/24 选择 10.1.9.1），并在验证步骤中明确写出该地址
                 - **如果有相关经验文档，请参考其中的方法和步骤制定计划**
                 - 如果实际参考了长期记忆，只能在 memory_ids_used 中填写上下文提供的 memory_id；未参考则返回空列表
 

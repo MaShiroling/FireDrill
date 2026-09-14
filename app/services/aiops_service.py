@@ -84,6 +84,7 @@ class AIOpsService:
         trace_metadata: dict[str, Any] | None = None,
         memory_tenant_id: str | None = None,
         memory_device_type: str | None = None,
+        allow_write: bool = True,
     ) -> AsyncGenerator[dict[str, Any], None]:
         """
         执行 Plan-Execute-Replan 流程
@@ -152,6 +153,7 @@ class AIOpsService:
                 "response": "",
                 "memory_tenant_id": memory_tenant_id or config.agent_memory_tenant_id,
                 "memory_device_type": memory_device_type or config.agent_memory_device_type,
+                "allow_write": allow_write,
             }
 
             # 流式执行工作流

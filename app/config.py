@@ -55,6 +55,12 @@ class Settings(BaseSettings):
     agent_model_max_attempts: int = 2
     agent_model_retry_delay_s: float = 0.5
 
+    # 意图识别采用规则优先；仅对低置信度运维请求调用轻量 LLM。
+    intent_llm_enabled: bool = True
+    intent_llm_model: str = "qwen-turbo"
+    intent_llm_timeout_s: float = Field(default=3.0, gt=0)
+    intent_llm_min_confidence: float = Field(default=0.8, ge=0, le=1)
+
     # Agent 长期记忆事实源；向量索引与 RAG 集合隔离，可由 SQLite 重建
     agent_memory_db_path: str = "volumes/agent_memory.db"
     agent_memory_collection_name: str = "agent_memory_v1"

@@ -190,6 +190,16 @@ class TestVerify:
         r = fw.test_traffic("office", "dmz", "1.1.1.1", "2.2.2.2", "tcp", "80")
         assert r["success"] is False
 
+    def test_test_traffic_rejects_cidr_packet_address(self, fw):
+        r = fw.test_traffic(
+            "trust", "dmz", "10.1.9.0/24", "172.16.1.30", "tcp", "443"
+        )
+
+        assert r["success"] is False
+        assert "src_addr" in r["error"]
+        assert "单个 IP" in r["error"]
+        assert "10.1.9.1" in r["error"]
+
 
 # ---------- 故障注入 ----------
 
