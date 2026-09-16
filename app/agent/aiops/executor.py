@@ -3,6 +3,7 @@ Executor 节点：执行单个步骤
 基于 LangGraph 官方教程实现
 """
 
+import json
 from typing import Any
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
@@ -33,6 +34,23 @@ STATEFUL_TOOL_NAMES = frozenset(
     }
 )
 
+REVISION_SOURCE_TOOL_NAMES = frozenset(
+    {
+        "get_firewall_overview",
+        "get_config_diff",
+        "commit_config",
+        "discard_candidate",
+    }
+)
+
+
+class RevisionUnavailableError(RuntimeError):
+    """Raised when a commit is attempted without an observed firewall revision."""
+
+
+class CandidateRevisionConflictError(RuntimeError):
+    """Raised when the observed Running and Candidate base revisions are stale."""
+
 
 def requires_sequential_tool_execution(tool_calls: list[dict[str, Any]]) -> bool:
     """Return whether a model-selected tool batch has state-order dependencies."""
@@ -58,6 +76,9 @@ async def execute_selected_tools(
     tool_node: ToolNode,
     messages: list[Any],
     llm_response: Any,
+    *,
+    revision_context: dict[str, Any] | None = None,
+    step: str = "",
 ) -> tuple[list[Any], str]:
     """Execute tool calls in parallel or sequentially according to state dependencies.
 
@@ -67,16 +88,146 @@ async def execute_selected_tools(
     all returned ToolMessages to the model conversation, preserving tool-call IDs.
     """
     tool_calls = list(llm_response.tool_calls)
+    revision_context = revision_context if revision_context is not None else {}
     if not requires_sequential_tool_execution(tool_calls):
+        for tool_call in tool_calls:
+            apply_commit_revision_guard(tool_call, revision_context)
+            _trace_tool_call_requested(tool_call, step)
         result = await tool_node.ainvoke({"messages": [*messages, llm_response]})
-        return list(result["messages"]), "parallel"
+        tool_messages = list(result["messages"])
+        update_revision_context(tool_messages, revision_context)
+        return tool_messages, "parallel"
 
     tool_messages: list[Any] = []
     for tool_call in tool_calls:
+        apply_commit_revision_guard(tool_call, revision_context)
+        _trace_tool_call_requested(tool_call, step)
         single_call_response = AIMessage(content="", tool_calls=[tool_call])
         result = await tool_node.ainvoke({"messages": [*messages, single_call_response]})
-        tool_messages.extend(result["messages"])
+        current_messages = list(result["messages"])
+        tool_messages.extend(current_messages)
+        # 让同一批中排在 get_config_diff 后面的 commit_config 也能使用
+        # 刚刚查询到的真实 Revision。
+        update_revision_context(current_messages, revision_context)
     return tool_messages, "sequential"
+
+
+def apply_commit_revision_guard(
+    tool_call: dict[str, Any], revision_context: dict[str, Any]
+) -> None:
+    """Inject the observed revision into commit_config before tool execution."""
+    if str(tool_call.get("name", "")) != "commit_config":
+        return
+
+    running_revision = revision_context.get("latest_running_revision")
+    candidate_base_revision = revision_context.get("candidate_base_revision")
+    if running_revision is None:
+        trace_event(
+            "commit_revision_guard",
+            node="executor",
+            data={"action": "blocked", "reason": "revision_unavailable"},
+        )
+        raise RevisionUnavailableError(
+            "commit_config 已被 Revision 守卫拦截：提交前必须先调用 "
+            "get_config_diff 或 get_firewall_overview 获取真实 Running Revision"
+        )
+
+    if (
+        candidate_base_revision is not None
+        and candidate_base_revision != running_revision
+    ):
+        trace_event(
+            "commit_revision_guard",
+            node="executor",
+            data={
+                "action": "blocked",
+                "reason": "candidate_is_stale",
+                "running_revision": running_revision,
+                "candidate_base_revision": candidate_base_revision,
+            },
+        )
+        raise CandidateRevisionConflictError(
+            "commit_config 已被 Revision 守卫拦截："
+            f"Running 为 R{running_revision}，Candidate 基于 R{candidate_base_revision}，"
+            "需要重新读取状态并重规划"
+        )
+
+    args = tool_call.setdefault("args", {})
+    model_revision = args.get("expected_revision")
+    args["expected_revision"] = running_revision
+    action = "preserved" if model_revision == running_revision else "overridden"
+    logger.info(
+        "Commit Revision 守卫: model_revision={}, actual_revision={}, action={}",
+        model_revision,
+        running_revision,
+        action,
+    )
+    trace_event(
+        "commit_revision_guard",
+        node="executor",
+        data={
+            "action": action,
+            "model_revision": model_revision,
+            "actual_revision": running_revision,
+            "candidate_base_revision": candidate_base_revision,
+            "change_set_id": revision_context.get("change_set_id"),
+        },
+    )
+
+
+def update_revision_context(
+    tool_messages: list[Any], revision_context: dict[str, Any]
+) -> None:
+    """Update revision state only from trusted firewall tool responses."""
+    for tool_message in tool_messages:
+        name = str(getattr(tool_message, "name", "") or "")
+        if name not in REVISION_SOURCE_TOOL_NAMES:
+            continue
+        payload = _parse_tool_payload(getattr(tool_message, "content", None))
+        if not payload or payload.get("success") is False:
+            continue
+
+        running_revision = payload.get("running_revision")
+        candidate_base_revision = payload.get("candidate_base_revision")
+        change_set_id = payload.get("change_set_id")
+        if isinstance(running_revision, int):
+            revision_context["latest_running_revision"] = running_revision
+        if isinstance(candidate_base_revision, int):
+            revision_context["candidate_base_revision"] = candidate_base_revision
+        if isinstance(change_set_id, str) and change_set_id:
+            revision_context["change_set_id"] = change_set_id
+
+
+def _parse_tool_payload(content: Any) -> dict[str, Any] | None:
+    if isinstance(content, dict):
+        return content
+    if isinstance(content, list):
+        for block in content:
+            if isinstance(block, dict) and isinstance(block.get("text"), str):
+                payload = _parse_tool_payload(block["text"])
+                if payload is not None:
+                    return payload
+        return None
+    if not isinstance(content, str):
+        return None
+    try:
+        payload = json.loads(content)
+    except (TypeError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _trace_tool_call_requested(tool_call: dict[str, Any], step: str) -> None:
+    trace_event(
+        "tool_call_requested",
+        node="executor",
+        data={
+            "tool_call_id": tool_call.get("id"),
+            "name": tool_call.get("name"),
+            "args": tool_call.get("args", {}),
+            "step": step,
+        },
+    )
 
 
 async def executor(state: PlanExecuteState) -> dict[str, Any]:
@@ -193,24 +344,23 @@ async def executor(state: PlanExecuteState) -> dict[str, Any]:
                     "plan": plan[1:],
                     "past_steps": [(task, result)],
                 }
-            for tool_call in llm_response.tool_calls:
-                trace_event(
-                    "tool_call_requested",
-                    node="executor",
-                    data={
-                        "tool_call_id": tool_call.get("id"),
-                        "name": tool_call.get("name"),
-                        "args": tool_call.get("args", {}),
-                        "step": task,
-                    },
-                )
-
             # ToolNode 默认并发执行同一 AIMessage 中的多个调用。配置写操作参与时，
             # 改为逐个调用，保证 commit 完成后才开始状态核实和流量验证。
+            revision_context = {
+                key: state[key]
+                for key in (
+                    "latest_running_revision",
+                    "candidate_base_revision",
+                    "change_set_id",
+                )
+                if key in state
+            }
             tool_messages, execution_mode = await execute_selected_tools(
                 tool_node,
                 messages,
                 llm_response,
+                revision_context=revision_context,
+                step=task,
             )
             trace_event(
                 "tool_execution_mode_selected",
@@ -266,10 +416,18 @@ async def executor(state: PlanExecuteState) -> dict[str, Any]:
         )
 
         # 返回更新：移除已执行的步骤，添加执行历史
-        return {
+        state_update: dict[str, Any] = {
             "plan": plan[1:],  # 移除第一个步骤
             "past_steps": [(task, result)],  # 使用 operator.add 追加
         }
+        for key in (
+            "latest_running_revision",
+            "candidate_base_revision",
+            "change_set_id",
+        ):
+            if "revision_context" in locals() and key in revision_context:
+                state_update[key] = revision_context[key]
+        return state_update
 
     except Exception as e:
         logger.error(f"执行步骤失败: {e}", exc_info=True)

@@ -16,14 +16,9 @@ from app.config import config
 from app.observability import trace_event
 from app.tools import DEFAULT_LOCAL_AGENT_TOOLS
 
+from .model_retry import invoke_model_with_retry
 from .state import PlanExecuteState
 from .utils import format_tools_description
-
-
-class Response(BaseModel):
-    """最终响应的格式"""
-
-    response: str = Field(description="对用户的最终响应")
 
 
 class Act(BaseModel):
@@ -424,7 +419,6 @@ async def replanner(state: PlanExecuteState) -> dict[str, Any]:
 async def _generate_response(state: PlanExecuteState, llm: ChatQwen) -> dict[str, Any]:
     """生成最终响应"""
     logger.info("生成最终响应...")
-    trace_event("model_call_started", node="replanner", data={"purpose": "generate_response"})
 
     input_text = state.get("input", "")
     past_steps = state.get("past_steps", [])
@@ -434,7 +428,9 @@ async def _generate_response(state: PlanExecuteState, llm: ChatQwen) -> dict[str
         [f"### 步骤: {step}\n**结果:**\n{result}" for step, result in past_steps]
     )
 
-    response_gen = response_prompt | llm.with_structured_output(Response)
+    # 最终响应只展示给用户，不参与后续控制流，无需强制结构化输出。
+    # Planner/Replanner 的机器决策仍继续使用结构化输出。
+    response_gen = response_prompt | llm
 
     try:
         messages = [
@@ -443,18 +439,34 @@ async def _generate_response(state: PlanExecuteState, llm: ChatQwen) -> dict[str
             ("user", "请基于以上信息生成全面的最终响应"),
         ]
 
-        response_obj = await response_gen.ainvoke({"messages": messages})
+        async def generate_once():
+            return await response_gen.ainvoke({"messages": messages})
 
-        # 处理返回结果
-        if response_obj is None:
-            # structured output 偶发返回 None（LLM 抖动），走后备响应
-            raise ValueError("LLM 返回空的最终响应")
+        response_obj = await invoke_model_with_retry(
+            generate_once,
+            node="replanner",
+            purpose="generate_response",
+        )
+        final_response = _extract_text_content(response_obj)
 
-        if isinstance(response_obj, Response):
-            final_response = response_obj.response
-        else:
-            # 如果返回的是字典
-            final_response = response_obj.get("response", "")  # type: ignore
+        # 部分模型调用可能成功返回，但内容为空。空响应不会被网络异常重试捕获，
+        # 因此单独再生成一次；这里只重放无副作用的最终总结，不会重复执行工具。
+        if not final_response:
+            logger.warning("模型返回空的最终响应，重试生成一次")
+            trace_event(
+                "model_empty_response",
+                node="replanner",
+                data={"purpose": "generate_response", "will_retry": True},
+            )
+            response_obj = await invoke_model_with_retry(
+                generate_once,
+                node="replanner",
+                purpose="generate_response_empty_retry",
+            )
+            final_response = _extract_text_content(response_obj)
+
+        if not final_response:
+            raise ValueError("LLM 连续返回空的最终响应")
 
         logger.info(f"最终响应生成完成，长度: {len(final_response)}")
         trace_event(
@@ -495,6 +507,30 @@ async def _generate_response(state: PlanExecuteState, llm: ChatQwen) -> dict[str
             data={"response_generated": True, "fallback": True},
         )
         return {"response": fallback_response}
+
+
+def _extract_text_content(response_obj: Any) -> str:
+    """从常见模型响应格式中提取可展示文本。"""
+    if response_obj is None:
+        return ""
+
+    content = getattr(response_obj, "content", response_obj)
+    if isinstance(content, str):
+        return content.strip()
+
+    # 兼容 LangChain/OpenAI 风格的多内容块响应。
+    if isinstance(content, list):
+        parts: list[str] = []
+        for block in content:
+            if isinstance(block, str):
+                parts.append(block)
+            elif isinstance(block, dict):
+                text = block.get("text") or block.get("content")
+                if isinstance(text, str):
+                    parts.append(text)
+        return "\n".join(part.strip() for part in parts if part.strip()).strip()
+
+    return ""
 
 
 def _format_simple_steps(past_steps: list) -> str:
